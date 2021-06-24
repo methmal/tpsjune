@@ -22,18 +22,20 @@ import os
 import shutil
 import config 
 from sklearn.model_selection import StratifiedKFold
+import argparse
+import model_dispatcher
 
 #https://www.kaggle.com/c/santander-customer-transaction-prediction/discussion/80809
 
-script_name = os.path.basename(__file__).split('.')[0]
-MODEL_NAME = f"{script_name}__folds{config.NFOLD}"
-print(f"Model: {MODEL_NAME}")
+# script_name = os.path.basename(__file__).split('.')[0]
+# MODEL_NAME = f"{script_name}__folds{config.NFOLD}"
+# print(f"Model: {MODEL_NAME}")
 
 
 
 
 
-def runtraining():
+def runtraining(model):
     utils.set_seed(config.RANDOM_SEED)
 
     print("Reading data....")
@@ -79,28 +81,14 @@ def runtraining():
 
 
 
-
-        params = {'iterations':15046,
-                'od_wait': 913 ,
-                 'loss_function':'MultiClass',
-                  'task_type':"GPU",
-                  'eval_metric':'MultiClass',
-                  'leaf_estimation_method':'Newton',
-                  'bootstrap_type': 'Bernoulli',
-                  'learning_rate' : 0.0211020670690157 ,
-                  'reg_lambda': 54.82598802626106 ,
-                  'subsample': 0.7353916510620078 ,
-                  'random_strength': 35.02506949376338 ,
-                  'depth': 9,
-                  'min_data_in_leaf': 25 ,
-                  'leaf_estimation_iterations': 1 ,
-                   }
-
-        
-        model = CatBoostClassifier(**params)  
-        model.fit(trn_x,trn_y,eval_set=[(val_x,val_y)],early_stopping_rounds=100,verbose=False)
-        val_pred = model.predict_proba(val_x)
-        test_fold_preds = model.predict_proba(X_test)
+        clf = model_dispatcher.models[model]
+        # model = CatBoostClassifier(**params)  
+        if model == "cb":
+            clf.fit(trn_x,trn_y,eval_set=[(val_x,val_y)],early_stopping_rounds=100,verbose=False)
+        else :
+            clf.fit(trn_x,trn_y)
+        val_pred = clf.predict_proba(val_x)
+        test_fold_preds = clf.predict_proba(X_test)
         fold_log_loss = log_loss(val_y, val_pred)
         comulative_log_loss += fold_log_loss
         avg_log_loss = comulative_log_loss / (fold_ + 1)
@@ -120,16 +108,22 @@ def runtraining():
     oof_preds = pd.DataFrame(np.column_stack((train_ids , oof_preds)) , columns=columns)
     oof_preds['id'] = oof_preds['id'].astype(int)
 
-    oof_preds.to_csv(f'../kfold/{MODEL_NAME}__{OOF_log_loss}.csv', index=False)
+    oof_preds.to_csv(f'../kfold/{model}__{OOF_log_loss}.csv', index=False)
 
     print("Saving submision file")
 
     sub_df = pd.DataFrame(np.column_stack((test_ids , test_preds)) , columns=columns)
     sub_df['id'] = sub_df['id'].astype(int)
-    sub_df.to_csv(f'../model_predictions/submision_{MODEL_NAME}_{OOF_log_loss}.csv', index=False)
+    sub_df.to_csv(f'../model_predictions/submision_{model}_{OOF_log_loss}.csv', index=False)
 
 
 if __name__ == "__main__" :
-    runtraining()
-    # df_sub = pd.read_csv("../model_predictions/submision_rf_clf__folds5_1.7447258575478999.csv")
-    # print(df_sub.dtypes)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+            "--model" ,
+            type=str
+            )
+    args = parser.parse_args()
+    runtraining(
+            model = args.model
+            )
