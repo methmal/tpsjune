@@ -55,11 +55,12 @@ def runtraining(model):
     
     #feature engineering 
     #noramalized feature_
+    scaler = StandardScaler()
     # scaler = MinMaxScaler()
-    # X = scaler.fit_transform(train)
-    # X_test = scaler.fit_transform(test)
-    X = train.values.astype(float)
-    X_test = test.values.astype(float)
+    X = scaler.fit_transform(train)
+    X_test = scaler.transform(test)
+    # X = train.values.astype(float)
+    # X_test = test.values.astype(float)
 
     clf = []
     folds = StratifiedKFold(n_splits=config.NFOLD , shuffle=True , random_state=config.RANDOM_SEED)
@@ -72,12 +73,11 @@ def runtraining(model):
         val_x , val_y = X[val_ , :] , y[val_]
 
         #feature scaling
-        scaler = StandardScaler()
-        fitscaler = scaler.fit(trn_x)
+        # scaler = StandardScaler()
 
-        trn_x = fitscaler.transform(trn_x)
-        val_x = fitscaler.transform(val_x)
-        X_test = fitscaler.transform(X_test)
+        # trn_x = scaler.fit_transform(trn_x)
+        # val_x = scaler.transform(val_x)
+        # X_test = scaler.transform(X_test)
 
 
 

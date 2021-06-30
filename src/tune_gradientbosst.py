@@ -10,14 +10,13 @@ from dataset import TabDataset
 from  model import Model
 from engine import Engine
 import sys
-from multimodel import MulticlassClassification
 import torch.nn as nn
-from catboost import CatBoostClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import log_loss
 from sklearn.model_selection import train_test_split
 import optuna
 from functools import partial
-from xgboost import XGBClassifier
+import utils
 
 
 
@@ -41,21 +40,15 @@ def target_encode(df):
 
 
 def objective(trial):
+    utils.set_seed(config.RANDOM_SEED)
     
-
-    params = {                
-                 'learning_rate':trial.suggest_uniform('learning_rate', 0.03, 0.06),
-                 'gamma':trial.suggest_uniform('gamma', .2, .5),
-                 'reg_alpha':trial.suggest_int('reg_alpha', 1, 5),
-                 'reg_lambda':trial.suggest_int('reg_lambda', 1, 7),
-                 'n_estimators':trial.suggest_int('n_estimators', 300, 500),
-                 'colsample_bynode':trial.suggest_uniform('colsample_bynode', .2, .4),
-                 'colsample_bylevel':trial.suggest_uniform('colsample_bylevel', .65, .75),
-                 'subsample':trial.suggest_uniform('subsample', .55, .75),               
-                 'min_child_weight':trial.suggest_int('min_child_weight', 100, 200),
-                 'colsample_bytree':trial.suggest_uniform('colsample_bytree',0.2, .4)
-            }
-
+    params = {
+	'n_estimators': trial.suggest_int('n_estimators', 50, 1000),
+	'max_depth': trial.suggest_int('max_depth', 4, 50),
+	'min_samples_split': trial.suggest_int('min_samples_split', 2, 150),
+        'min_samples_leaf': trial.suggest_int('min_samples_leaf', 2, 60),
+        'learning_rate':trial.suggest_uniform('learning_rate', 0.03, 0.06),
+    }
     all_loss = []
     for fol_ in range(5):
         temp_loss = runtraining(fol_ , params , save_model=False)
@@ -64,6 +57,7 @@ def objective(trial):
     return np.mean(all_loss)
 
 def runtraining(fold,params=None ,save_model=False):
+    utils.set_seed(config.RANDOM_SEED)
 
     df = pd.read_csv(config.TRAIN_FOLD)
     df = df.drop(['id'] , axis=1)
@@ -76,24 +70,25 @@ def runtraining(fold,params=None ,save_model=False):
     valid_df = df[df.kfold == fold].reset_index(drop=True)
 
 
-    xtrain = train_df[feature_columns].values.astype(float)
-    xvalid = valid_df[feature_columns].values.astype(float)
-    
+    xtrain = train_df[feature_columns]
+    xvalid = valid_df[feature_columns]
+    #noramalized feature_
+    # scaler = MinMaxScaler()
     scaler = StandardScaler()
     xtrain = scaler.fit_transform(xtrain)
     ytrain = train_df[target_columns].values
     xvalid = scaler.transform(xvalid)
     yvalid = valid_df[target_columns].values
-
-    model = XGBClassifier(objective='multi:softprob', eval_metric = "mlogloss", num_class = 9,
-                          tree_method = 'gpu_hist', max_depth = 13, use_label_encoder=False, **params)
-    model.fit(xtrain , ytrain)
+    
+    model = GradientBoostingClassifier(random_state=config.RANDOM_SEED , **params)  
+    model.fit(xtrain,ytrain.ravel())
     y_preds = model.predict_proba(xvalid)
     log_loss_multi = log_loss(yvalid, y_preds)
     return log_loss_multi
 
 
 if __name__ == "__main__" :
+    utils.set_seed(config.RANDOM_SEED)
     partial_obj= partial(objective)
     study = optuna.create_study(direction='minimize')
     study.optimize(partial_obj, n_trials=150)
